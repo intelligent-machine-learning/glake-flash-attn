@@ -1,6 +1,5 @@
 import math
 
-import pytest
 import torch
 import torch.nn.functional as F
 from einops import rearrange, repeat
@@ -145,14 +144,14 @@ dtype = torch.float16
 num_splits = 1
 mha_type = "mha"
 new_kv = False
-local = True
-causal = True
+local = False
+causal = False
 seqlen_new_eq_seqlen_q = True
 rotary_interleaved = False
 rotary_fraction = 0.0
 has_batch_idx = False
 d = 64
-seqlen_q, seqlen_k = (1, 128)
+seqlen_q, seqlen_k = (1, 1024)
 
 # @pytest.mark.parametrize('seqlen_q,seqlen_k', [(256, 128)])
 def test_flash_attn_kvcache(
@@ -185,6 +184,7 @@ def test_flash_attn_kvcache(
     nheads_k = nheads if mha_type == "mha" else (1 if mha_type == "mqa" else 3)
     assert nheads % nheads_k == 0
     window_size = (-1, -1) if not local else torch.randint(0, seqlen_k, (2,))
+    print(window_size)
     q = torch.randn(batch_size, seqlen_q, nheads, d, device=device, dtype=dtype)
     seqlen_new = seqlen_q if seqlen_new_eq_seqlen_q else torch.randint(1, seqlen_q + 1, (1,)).item()
     if new_kv:
@@ -214,9 +214,10 @@ def test_flash_attn_kvcache(
         dtype=torch.int32,
         device=device,
     )
+    print(cache_seqlens)
     for i in range(batch_size_cache):
-        # b_seq_len = cache_seqlens[i]
-        b_seq_len = seqlen_k
+        b_seq_len = cache_seqlens[i]
+        #b_seq_len = seqlen_k
         b_context_size = b_seq_len * nheads_k * d * k_cache.element_size()
         b_context_size = phy_gran * ((b_context_size + phy_gran - 1) // phy_gran)
         b_num_blocks = b_context_size // phy_gran
@@ -303,6 +304,8 @@ def test_flash_attn_kvcache(
         )
         cache_seqlens = maybe_contiguous(cache_seqlens)
     cache_batch_idx = maybe_contiguous(cache_batch_idx)
+    slot_m = [0, 1]
+    slot_mapping = torch.tensor(slot_m, dtype=torch.int, device="cuda")
     out, softmax_lse = flash_attn_cuda.fwd_kvcache(
         q,
         key_cache.getDevicePtr(0),
@@ -312,6 +315,7 @@ def test_flash_attn_kvcache(
         batch_size_cache,
         context_size,
         context_size,
+        slot_mapping,
         k,
         v,
         cache_seqlens,

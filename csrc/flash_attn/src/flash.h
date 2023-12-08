@@ -39,6 +39,8 @@ struct Qkv_params {
     index_t k_head_stride;
     index_t v_head_stride;
 
+	int* slot_m;
+
     // The number of heads.
     int h, h_k;
     // In the case of multi-query and grouped-query attention (MQA/GQA), nheads_k could be

@@ -43,7 +43,8 @@ void set_params_fprop(Flash_fwd_params &params,
                       int window_size_left,
                       int window_size_right,
                       size_t k_batch_stride,
-                      size_t v_batch_stride) {
+                      size_t v_batch_stride,
+					  int* slot_m) {
 
     // Reset the parameters
     memset(&params, 0, sizeof(params));
@@ -64,6 +65,8 @@ void set_params_fprop(Flash_fwd_params &params,
     params.o_ptr = out.data_ptr();
     params.o_row_stride = out.stride(-3);
     params.o_head_stride = out.stride(-2);
+
+	params.slot_m = slot_m;
 
     if (cu_seqlens_q_d == nullptr) {
         params.q_batch_stride = q.stride(0);
@@ -1046,6 +1049,7 @@ mha_fwd_kvcache(at::Tensor &q,                 // batch_size x seqlen_q x num_he
                 int batch_size_c_in,
                 size_t k_batch_stride,
                 size_t v_batch_stride,
+				at::Tensor &slot_mapping,
                 c10::optional<const at::Tensor> &k_, // batch_size x seqlen_knew x num_heads_k x head_size
                 c10::optional<const at::Tensor> &v_, // batch_size x seqlen_knew x num_heads_k x head_size
                 c10::optional<const at::Tensor> &seqlens_k_, // batch_size
@@ -1093,6 +1097,7 @@ mha_fwd_kvcache(at::Tensor &q,                 // batch_size x seqlen_q x num_he
     const int seqlen_k = seqlen_k_in;
     const int num_heads_k = num_heads_k_in;
     const int batch_size_c = batch_size_c_in;
+	int* slot_m = slot_mapping.data_ptr<int>();
     TORCH_CHECK(batch_size > 0, "batch size must be postive");
     TORCH_CHECK(head_size_og <= 256, "FlashAttention forward only supports head dimension at most 256");
     TORCH_CHECK(num_heads % num_heads_k == 0, "Number of heads in key/value must divide number of heads in query");
@@ -1168,7 +1173,8 @@ mha_fwd_kvcache(at::Tensor &q,                 // batch_size x seqlen_q x num_he
                      window_size_left,
                      window_size_right,
                      k_batch_stride,
-                     v_batch_stride);
+                     v_batch_stride,
+					 slot_m);
 
     at::Tensor k, v, k_padded, v_padded;
     if (k_.has_value()) {
