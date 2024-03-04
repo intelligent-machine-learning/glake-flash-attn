@@ -53,8 +53,8 @@ void set_params_fprop(Flash_fwd_params &params,
 
     // Set the pointers and strides.
     params.q_ptr = q.data_ptr();
-    params.k_ptr = reinterpret_cast<void*>(k);
-    params.v_ptr = reinterpret_cast<void*>(v);
+    params.k_ptr = reinterpret_cast<void**>(k);
+    params.v_ptr = reinterpret_cast<void**>(v);
     // All stride are in elements, not bytes.
     params.q_row_stride = q.stride(-3);
     params.k_row_stride = h_k * d;
