@@ -119,14 +119,12 @@ inline __device__ void compute_attn_1rowblock(const Params &params, const int bi
                             make_stride(params.q_row_stride, params.q_head_stride, _1{}));
     Tensor gQ = local_tile(mQ(_, bidh, _), Shape<Int<kBlockM>, Int<kHeadDim>>{},
                            make_coord(m_block, 0));  // (kBlockM, kHeadDim)
-    Tensor mK = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.k_ptr)
-                                          + binfo.k_offset(params.k_batch_stride, params.k_row_stride, bidb)),
+    Tensor mK = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(*((Element**)params.k_ptr + params.slot_m[bidb]))),
                             make_shape(binfo.actual_seqlen_k, params.h_k, params.d),
                             make_stride(params.k_row_stride, params.k_head_stride, _1{}));
     Tensor gK = local_tile(mK(_, bidh / params.h_h_k_ratio, _), Shape<Int<kBlockN>, Int<kHeadDim>>{},
                            make_coord(_, 0));  // (kBlockN, kHeadDim, nblocksN)
-    Tensor mV = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.v_ptr)
-                                          + binfo.k_offset(params.v_batch_stride, params.v_row_stride, bidb)),
+    Tensor mV = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(*((Element**)params.v_ptr + params.slot_m[bidb]))),
                             make_shape(binfo.actual_seqlen_k, params.h_k, params.d),
                             make_stride(params.v_row_stride, params.v_head_stride, _1{}));
     Tensor gV = local_tile(mV(_, bidh / params.h_h_k_ratio, _), Shape<Int<kBlockN>, Int<kHeadDim>>{},
@@ -560,12 +558,10 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params &params, cons
     const int block_table_idx = block_table == nullptr ? 0 : (n_block_max - 1) * kBlockN / params.page_block_size;
     const int block_table_offset = block_table == nullptr ? 0 : (n_block_max - 1) * kBlockN - block_table_idx * params.page_block_size;
     const index_t row_offset_k = block_table == nullptr
-        ? binfo.k_offset(params.k_batch_stride, params.k_row_stride, bidb_cache)
-          + (n_block_max - 1) * kBlockN * params.k_row_stride + (bidh / params.h_h_k_ratio) * params.k_head_stride
+        ? (n_block_max - 1) * kBlockN * params.k_row_stride + (bidh / params.h_h_k_ratio) * params.k_head_stride
         : block_table[block_table_idx] * params.k_batch_stride + block_table_offset * params.k_row_stride + (bidh / params.h_h_k_ratio) * params.k_head_stride;
     const index_t row_offset_v = block_table == nullptr
-        ? binfo.k_offset(params.v_batch_stride, params.v_row_stride, bidb_cache)
-          + (n_block_max - 1) * kBlockN * params.v_row_stride + (bidh / params.h_h_k_ratio) * params.v_head_stride
+        ? (n_block_max - 1) * kBlockN * params.v_row_stride + (bidh / params.h_h_k_ratio) * params.v_head_stride
         : block_table[block_table_idx] * params.v_batch_stride + block_table_offset * params.v_row_stride + (bidh / params.h_h_k_ratio) * params.v_head_stride;
 
     Tensor mQ = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.q_ptr) + binfo.q_offset(params.q_batch_stride, params.q_row_stride, bidb)),
@@ -573,11 +569,11 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params &params, cons
                             make_stride(params.q_row_stride, params.q_head_stride, _1{}));
     Tensor gQ = local_tile(mQ(_, bidh, _), Shape<Int<kBlockM>, Int<kHeadDim>>{},
                            make_coord(m_block, 0));  // (kBlockM, kHeadDim)
-    Tensor gK = make_tensor(make_gmem_ptr(reinterpret_cast<Element *>(params.k_ptr) + row_offset_k),
+    Tensor gK = make_tensor(make_gmem_ptr(reinterpret_cast<Element *>(*((Element**)params.k_ptr + params.slot_m[bidb])) + row_offset_k),
                             Shape<Int<kBlockN>, Int<kHeadDim>>{},
                             make_stride(params.k_row_stride, _1{}));
     // if (threadIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) { printf("k_ptr = %p, row_offset_k = %d, gK_ptr = %p\n", params.k_ptr, row_offset_k, gK.data()); }
-    Tensor gV = make_tensor(make_gmem_ptr(reinterpret_cast<Element *>(params.v_ptr) + row_offset_v),
+    Tensor gV = make_tensor(make_gmem_ptr(reinterpret_cast<Element *>(*((Element**)params.v_ptr + params.slot_m[bidb])) + row_offset_v),
                             Shape<Int<kBlockN>, Int<kHeadDim>>{},
                             make_stride(params.v_row_stride, _1{}));
 
